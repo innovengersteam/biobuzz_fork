@@ -1,4 +1,3 @@
-
 package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -7,65 +6,81 @@ import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
 import com.qualcomm.robotcore.util.Range;
 
 @TeleOp(name = "BioBuzz TeleOp", group = "BioBuzz")
 public class BioBuzzTeleOp extends LinearOpMode {
 
     // ==========================================
-    // 1. HARDWARE
+    // HARDWARE
     // ==========================================
 
-    // Control Hub: drive motors
+    // Control Hub motor ports:
+    // 0 = leftFront
+    // 1 = rightFront
+    // 2 = rightRear
+    // 3 = leftRear
     private DcMotor leftFront;
     private DcMotor rightFront;
     private DcMotor leftRear;
     private DcMotor rightRear;
 
-    // Expansion Hub: mechanism motors
+    // Expansion Hub motor ports:
+    // 0 = intake
+    // 1 = outtake, with encoder on encoder port 1
     private DcMotor intake;
     private DcMotorEx outtake;
 
-    // Control Hub: continuous rotation servo
+    // Control Hub servo port 0, continuous rotation mode
     private CRServo transfer;
 
     // ==========================================
-    // 2. SETTINGS
+    // SETTINGS
     // ==========================================
 
     private static final double DRIVE_SPEED = 0.75;
     private static final double INTAKE_POWER = 1.0;
     private static final double TRANSFER_POWER = 1.0;
 
-    private static final double START_RPM = 2500;
-    private static final double RPM_STEP = 50;
-    private static final double MAX_RPM = 6000;
+    private static final double START_RPM = 2500.0;
+    private static final double RPM_STEP = 50.0;
+    private static final double MAX_RPM = 6000.0;
+
+    // Converted goBILDA 1:1 outtake motor
+    private static final double OUTTAKE_TICKS_PER_REV = 28.0;
+    private static final double OUTTAKE_GEAR_RATIO = 1.0;
+    private static final double OUTTAKE_RATED_RPM = 6000.0;
+
+    // Change this in software if the shooting direction
+    // needs reversing. Keep the corrected power wiring.
+    private static final DcMotorSimple.Direction OUTTAKE_DIRECTION =
+            DcMotorSimple.Direction.FORWARD;
 
     private double targetRPM = START_RPM;
 
     // ==========================================
-    // 3. TOGGLE STATES
+    // TOGGLE STATES
     // ==========================================
 
     private boolean intakeOn = false;
     private boolean transferOn = false;
     private boolean outtakeOn = false;
 
-    // Previous button states for press detection
+    // Previous inputs for one action per press
     private boolean lastLeftTrigger = false;
     private boolean lastLeftBumper = false;
     private boolean lastRightTrigger = false;
     private boolean lastDpadUp = false;
     private boolean lastDpadDown = false;
 
-    // ==========================================
-    // 4. MAIN TELEOP PROGRAM
-    // ==========================================
-
     @Override
     public void runOpMode() {
 
-        // Get motors from robot configuration
+        // ------------------------------------------
+        // GET HARDWARE
+        // ------------------------------------------
+
         leftFront = hardwareMap.get(DcMotor.class, "leftFront");
         rightFront = hardwareMap.get(DcMotor.class, "rightFront");
         leftRear = hardwareMap.get(DcMotor.class, "leftRear");
@@ -75,186 +90,367 @@ public class BioBuzzTeleOp extends LinearOpMode {
         outtake = hardwareMap.get(DcMotorEx.class, "outtake");
         transfer = hardwareMap.get(CRServo.class, "transfer");
 
-        // Reverse left-side motors for mecanum drive.
-        // Adjust directions if physical wiring requires it.
+        // ------------------------------------------
+        // OUTTAKE MOTOR CONFIGURATION OVERRIDE
+        // ------------------------------------------
+
+        // The generic dropdown definition does not match
+        // the converted 1:1 gearbox.
+        // Clone first so other motors are unaffected.
+        MotorConfigurationType outtakeType =
+                outtake.getMotorType().clone();
+
+        outtakeType.setTicksPerRev(OUTTAKE_TICKS_PER_REV);
+        outtakeType.setGearing(OUTTAKE_GEAR_RATIO);
+        outtakeType.setMaxRPM(OUTTAKE_RATED_RPM);
+
+        outtake.setMotorType(outtakeType);
+
+        // ------------------------------------------
+        // DIRECTIONS
+        // ------------------------------------------
+
         leftFront.setDirection(DcMotorSimple.Direction.REVERSE);
         leftRear.setDirection(DcMotorSimple.Direction.REVERSE);
+
         rightFront.setDirection(DcMotorSimple.Direction.FORWARD);
         rightRear.setDirection(DcMotorSimple.Direction.FORWARD);
 
         intake.setDirection(DcMotorSimple.Direction.FORWARD);
-        outtake.setDirection(DcMotorSimple.Direction.REVERSE);
-        transfer.setDirection(DcMotorSimple.Direction.FORWARD);
+        transfer.setDirection(DcMotorSimple.Direction.REVERSE);
+        outtake.setDirection(OUTTAKE_DIRECTION);
 
-        // Brake drive motors when joystick is released
-        leftFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        rightFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        leftRear.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        rightRear.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        // ------------------------------------------
+        // ZERO-POWER BEHAVIOR
+        // ------------------------------------------
 
-        // Use encoder feedback for outtake RPM control
+        leftFront.setZeroPowerBehavior(
+                DcMotor.ZeroPowerBehavior.BRAKE);
+        rightFront.setZeroPowerBehavior(
+                DcMotor.ZeroPowerBehavior.BRAKE);
+        leftRear.setZeroPowerBehavior(
+                DcMotor.ZeroPowerBehavior.BRAKE);
+        rightRear.setZeroPowerBehavior(
+                DcMotor.ZeroPowerBehavior.BRAKE);
+
+        intake.setZeroPowerBehavior(
+                DcMotor.ZeroPowerBehavior.BRAKE);
+
+        outtake.setZeroPowerBehavior(
+                DcMotor.ZeroPowerBehavior.FLOAT);
+
+        // ------------------------------------------
+        // MOTOR MODES
+        // ------------------------------------------
+
+        // Drive and intake encoders are not connected.
+        leftFront.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        rightFront.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        leftRear.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        rightRear.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+
+        // Restore closed-loop outtake velocity control.
         outtake.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
-        // Read encoder ticks per output shaft revolution
-        double ticksPerRev = outtake.getMotorType().getTicksPerRev();
+        // Keep existing PIDF coefficients unchanged.
+        stopEverything();
 
-        if (ticksPerRev <= 0) {
-            telemetry.addLine("ERROR: Check outtake motor type.");
-            telemetry.update();
-            return;
-        }
+        // ------------------------------------------
+        // INITIAL TELEMETRY
+        // ------------------------------------------
 
-        // Start all mechanisms stopped
-        intake.setPower(0);
-        transfer.setPower(0);
-        outtake.setVelocity(0);
+        telemetry.addLine("=== BIOBUZZ TELEOP READY ===");
+        telemetry.addLine("Left stick = Drive / Strafe");
+        telemetry.addLine("Right stick X = Turn");
+        telemetry.addLine("LT = Toggle intake");
+        telemetry.addLine("LB = Toggle transfer");
+        telemetry.addLine("RT = Toggle outtake");
+        telemetry.addLine("D-pad Up/Down = +/- 50 RPM");
 
-        telemetry.addLine("BioBuzz Robot Initialized");
-        telemetry.addLine("Press PLAY to start");
+        telemetry.addData(
+                "Starting target RPM", "%.0f", targetRPM);
+
+        telemetry.addData(
+                "Outtake ticks/rev",
+                "%.2f",
+                outtake.getMotorType().getTicksPerRev()
+        );
+
+        telemetry.addData(
+                "Outtake gearing",
+                "%.2f",
+                outtake.getMotorType().getGearing()
+        );
+
+        telemetry.addData(
+                "Outtake rated RPM",
+                "%.0f",
+                outtake.getMotorType().getMaxRPM()
+        );
+
+        telemetry.addLine("Press PLAY to start.");
         telemetry.update();
 
-        waitForStart();
-
-        if (isStopRequested()) {
-            return;
-        }
-
-        // ======================================
-        // 5. MAIN CONTROL LOOP
-        // ======================================
-
         try {
+            waitForStart();
+
+            if (isStopRequested()) {
+                return;
+            }
+
             while (opModeIsActive()) {
 
-                // ----------------------------------
-                // DRIVE: LEFT AND RIGHT JOYSTICKS
-                // ----------------------------------
+                // ==================================
+                // DRIVE
+                // ==================================
 
                 double forward = -gamepad1.left_stick_y;
                 double strafe = gamepad1.left_stick_x;
                 double turn = gamepad1.right_stick_x;
 
-                // Mecanum wheel power calculations
                 double lf = forward + strafe + turn;
                 double rf = forward - strafe - turn;
                 double lr = forward - strafe + turn;
                 double rr = forward + strafe - turn;
 
-                // Normalize to keep motor powers within range
-                double max = Math.max(1.0,
-                        Math.max(Math.abs(lf),
-                                Math.max(Math.abs(rf),
-                                        Math.max(Math.abs(lr), Math.abs(rr)))));
+                // Preserve wheel-power ratios while keeping
+                // each normalized command within -1 to +1.
+                double max = Math.max(
+                        1.0,
+                        Math.max(
+                                Math.abs(lf),
+                                Math.max(
+                                        Math.abs(rf),
+                                        Math.max(
+                                                Math.abs(lr),
+                                                Math.abs(rr)
+                                        )
+                                )
+                        )
+                );
 
                 leftFront.setPower(lf / max * DRIVE_SPEED);
                 rightFront.setPower(rf / max * DRIVE_SPEED);
                 leftRear.setPower(lr / max * DRIVE_SPEED);
                 rightRear.setPower(rr / max * DRIVE_SPEED);
 
-                // ----------------------------------
-                // LEFT TRIGGER: TOGGLE INTAKE
-                // ----------------------------------
+                // ==================================
+                // READ BUTTONS
+                // ==================================
 
-                boolean leftTrigger = gamepad1.left_trigger > 0.5;
+                boolean leftTrigger =
+                        gamepad1.left_trigger > 0.5;
+
+                boolean leftBumper =
+                        gamepad1.left_bumper;
+
+                boolean rightTrigger =
+                        gamepad1.right_trigger > 0.5;
+
+                boolean dpadUp =
+                        gamepad1.dpad_up;
+
+                boolean dpadDown =
+                        gamepad1.dpad_down;
+
+                // ==================================
+                // TOGGLE MECHANISMS
+                // ==================================
 
                 if (leftTrigger && !lastLeftTrigger) {
                     intakeOn = !intakeOn;
                 }
 
-                lastLeftTrigger = leftTrigger;
-
-                intake.setPower(intakeOn ? INTAKE_POWER : 0);
-
-                // ----------------------------------
-                // LEFT BUMPER: TOGGLE TRANSFER
-                // ----------------------------------
-
-                boolean leftBumper = gamepad1.left_bumper;
-
                 if (leftBumper && !lastLeftBumper) {
                     transferOn = !transferOn;
                 }
-
-                lastLeftBumper = leftBumper;
-
-                transfer.setPower(transferOn ? TRANSFER_POWER : 0);
-
-                // ----------------------------------
-                // RIGHT TRIGGER: TOGGLE OUTTAKE
-                // ----------------------------------
-
-                boolean rightTrigger = gamepad1.right_trigger > 0.5;
 
                 if (rightTrigger && !lastRightTrigger) {
                     outtakeOn = !outtakeOn;
                 }
 
-                lastRightTrigger = rightTrigger;
-
-                // ----------------------------------
-                // D-PAD UP: INCREASE RPM BY 50
-                // ----------------------------------
-
-                boolean dpadUp = gamepad1.dpad_up;
+                // ==================================
+                // ADJUST TARGET RPM
+                // ==================================
 
                 if (dpadUp && !lastDpadUp) {
                     targetRPM += RPM_STEP;
                 }
 
-                lastDpadUp = dpadUp;
-
-                // ----------------------------------
-                // D-PAD DOWN: DECREASE RPM BY 50
-                // ----------------------------------
-
-                boolean dpadDown = gamepad1.dpad_down;
-
                 if (dpadDown && !lastDpadDown) {
                     targetRPM -= RPM_STEP;
                 }
 
+                targetRPM = Range.clip(
+                        targetRPM, 0.0, MAX_RPM);
+
+                // Remember inputs for the next loop.
+                lastLeftTrigger = leftTrigger;
+                lastLeftBumper = leftBumper;
+                lastRightTrigger = rightTrigger;
+                lastDpadUp = dpadUp;
                 lastDpadDown = dpadDown;
 
-                // Keep RPM in the permitted range
-                targetRPM = Range.clip(targetRPM, 0, MAX_RPM);
+                // ==================================
+                // COMMAND MECHANISMS
+                // ==================================
 
-                // Convert RPM to encoder ticks per second
-                double ticksPerSecond =
-                        (targetRPM / 60.0) * ticksPerRev;
+                intake.setPower(
+                        intakeOn ? INTAKE_POWER : 0.0);
 
-                // Apply outtake velocity
-                if (outtakeOn) {
-                    outtake.setVelocity(ticksPerSecond);
-                } else {
-                    outtake.setVelocity(0);
-                }
+                transfer.setPower(
+                        transferOn ? TRANSFER_POWER : 0.0);
 
-                // ----------------------------------
-                // TELEMETRY
-                // ----------------------------------
+                double commandedRPM =
+                        outtakeOn ? targetRPM : 0.0;
+
+                double requestedTicksPerSecond =
+                        commandedRPM
+                                * OUTTAKE_TICKS_PER_REV
+                                / 60.0;
+
+                outtake.setVelocity(requestedTicksPerSecond);
+
+                // ==================================
+                // READ OUTTAKE FEEDBACK
+                // ==================================
+
+                // One velocity sample per loop.
+                double actualTicksPerSecond =
+                        outtake.getVelocity();
+
+                double signedActualRPM =
+                        actualTicksPerSecond
+                                * 60.0
+                                / OUTTAKE_TICKS_PER_REV;
 
                 double actualRPM =
-                        (outtake.getVelocity() / ticksPerRev) * 60.0;
+                        Math.abs(signedActualRPM);
+
+                double signedRPMError =
+                        commandedRPM - signedActualRPM;
+
+                // ==================================
+                // TELEMETRY
+                // ==================================
 
                 telemetry.addLine("=== BIOBUZZ TELEOP ===");
-                telemetry.addData("Intake", intakeOn ? "ON" : "OFF");
-                telemetry.addData("Transfer", transferOn ? "ON" : "OFF");
-                telemetry.addData("Outtake", outtakeOn ? "ON" : "OFF");
-                telemetry.addData("Target RPM", "%.0f", targetRPM);
-                telemetry.addData("Actual RPM", "%.0f", actualRPM);
+
+                telemetry.addData(
+                        "Intake", intakeOn ? "ON" : "OFF");
+                telemetry.addData(
+                        "Transfer", transferOn ? "ON" : "OFF");
+                telemetry.addData(
+                        "Outtake", outtakeOn ? "ON" : "OFF");
+
+                telemetry.addLine("--- OUTTAKE ---");
+
+                telemetry.addData(
+                        "Target RPM",
+                        "%.0f",
+                        targetRPM
+                );
+
+                telemetry.addData(
+                        "Commanded RPM",
+                        "%.0f",
+                        commandedRPM
+                );
+
+                telemetry.addData(
+                        "Actual RPM",
+                        "%.0f",
+                        actualRPM
+                );
+
+                telemetry.addData(
+                        "Actual SIGNED RPM",
+                        "%.0f",
+                        signedActualRPM
+                );
+
+                telemetry.addData(
+                        "Signed RPM error",
+                        "%.0f",
+                        signedRPMError
+                );
+
+                telemetry.addData(
+                        "Requested ticks/sec",
+                        "%.1f",
+                        requestedTicksPerSecond
+                );
+
+                telemetry.addData(
+                        "Measured SIGNED ticks/sec",
+                        "%.1f",
+                        actualTicksPerSecond
+                );
+
+                telemetry.addData(
+                        "Encoder position",
+                        outtake.getCurrentPosition()
+                );
+
+                telemetry.addLine("--- CONFIGURATION ---");
+
+                telemetry.addData(
+                        "Motor mode",
+                        outtake.getMode()
+                );
+
+                telemetry.addData(
+                        "Motor direction",
+                        outtake.getDirection()
+                );
+
+                telemetry.addData(
+                        "Configured ticks/rev",
+                        "%.2f",
+                        outtake.getMotorType().getTicksPerRev()
+                );
+
+                telemetry.addData(
+                        "Configured gearing",
+                        "%.2f",
+                        outtake.getMotorType().getGearing()
+                );
+
+                telemetry.addData(
+                        "Configured maximum RPM",
+                        "%.0f",
+                        outtake.getMotorType().getMaxRPM()
+                );
+
+                telemetry.addData(
+                        "Velocity PIDF",
+                        outtake.getPIDFCoefficients(
+                                DcMotor.RunMode.RUN_USING_ENCODER
+                        )
+                );
+
                 telemetry.update();
-
+                idle();
             }
-        } finally {
-            // Stop everything when TeleOp ends
-            leftFront.setPower(0);
-            rightFront.setPower(0);
-            leftRear.setPower(0);
-            rightRear.setPower(0);
 
-            intake.setPower(0);
-            transfer.setPower(0);
-            outtake.setVelocity(0);
+        } finally {
+            stopEverything();
         }
+    }
+
+    // ==========================================
+    // STOP EVERYTHING
+    // ==========================================
+
+    private void stopEverything() {
+        leftFront.setPower(0.0);
+        rightFront.setPower(0.0);
+        leftRear.setPower(0.0);
+        rightRear.setPower(0.0);
+
+        intake.setPower(0.0);
+        transfer.setPower(0.0);
+        outtake.setVelocity(0.0);
     }
 }
