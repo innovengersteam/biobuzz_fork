@@ -1,3 +1,4 @@
+
 package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -16,24 +17,31 @@ public class BioBuzzTeleOp extends LinearOpMode {
     // HARDWARE
     // ==========================================
 
-    // Control Hub motor ports:
-    // 0 = leftFront
-    // 1 = rightFront
-    // 2 = rightRear
-    // 3 = leftRear
+    // CONTROL HUB
+    // Motor Port 0 = leftFront
+    // Motor Port 1 = rightFront
+    // Motor Port 3 = leftRear
     private DcMotor leftFront;
     private DcMotor rightFront;
     private DcMotor leftRear;
-    private DcMotor rightRear;
 
-    // Expansion Hub motor ports:
-    // 0 = intake
-    // 1 = outtake, with encoder on encoder port 1
+    // EXPANSION HUB
+    // Motor Port 0 = intake
+    // Motor Port 1 = outtake (encoder connected)
+    // Motor Port 2 = rightRear
     private DcMotor intake;
     private DcMotorEx outtake;
+    private DcMotor rightRear;
 
-    // Control Hub servo port 0, continuous rotation mode
+    // CONTROL HUB SERVOS
+    // Servo Port 0 = transfer
+    // Servo Port 2 = leftIntakeServo
     private CRServo transfer;
+    private CRServo leftIntakeServo;
+
+    // EXPANSION HUB SERVOS
+    // Servo Port 0 = rightIntakeServo
+    private CRServo rightIntakeServo;
 
     // ==========================================
     // SETTINGS
@@ -42,6 +50,7 @@ public class BioBuzzTeleOp extends LinearOpMode {
     private static final double DRIVE_SPEED = 0.75;
     private static final double INTAKE_POWER = 1.0;
     private static final double TRANSFER_POWER = 1.0;
+    private static final double INTAKE_SERVO_POWER = 1.0;
 
     private static final double START_RPM = 2500.0;
     private static final double RPM_STEP = 50.0;
@@ -89,6 +98,8 @@ public class BioBuzzTeleOp extends LinearOpMode {
         intake = hardwareMap.get(DcMotor.class, "intake");
         outtake = hardwareMap.get(DcMotorEx.class, "outtake");
         transfer = hardwareMap.get(CRServo.class, "transfer");
+        leftIntakeServo = hardwareMap.get(CRServo.class, "leftIntakeServo");
+        rightIntakeServo = hardwareMap.get(CRServo.class, "rightIntakeServo");
 
         // ------------------------------------------
         // OUTTAKE MOTOR CONFIGURATION OVERRIDE
@@ -118,6 +129,8 @@ public class BioBuzzTeleOp extends LinearOpMode {
 
         intake.setDirection(DcMotorSimple.Direction.FORWARD);
         transfer.setDirection(DcMotorSimple.Direction.REVERSE);
+        leftIntakeServo.setDirection(DcMotorSimple.Direction.REVERSE);
+        rightIntakeServo.setDirection(DcMotorSimple.Direction.FORWARD);
         outtake.setDirection(OUTTAKE_DIRECTION);
 
         // ------------------------------------------
@@ -299,6 +312,12 @@ public class BioBuzzTeleOp extends LinearOpMode {
                 intake.setPower(
                         intakeOn ? INTAKE_POWER : 0.0);
 
+                // Run both intake servos with the intake motor.
+                leftIntakeServo.setPower(
+                        intakeOn ? INTAKE_SERVO_POWER : 0.0);
+                rightIntakeServo.setPower(
+                        intakeOn ? INTAKE_SERVO_POWER : 0.0);
+
                 transfer.setPower(
                         transferOn ? TRANSFER_POWER : 0.0);
 
@@ -339,6 +358,10 @@ public class BioBuzzTeleOp extends LinearOpMode {
 
                 telemetry.addData(
                         "Intake", intakeOn ? "ON" : "OFF");
+                telemetry.addData(
+                        "Left Intake Servo", intakeOn ? "ON" : "OFF");
+                telemetry.addData(
+                        "Right Intake Servo", intakeOn ? "ON" : "OFF");
                 telemetry.addData(
                         "Transfer", transferOn ? "ON" : "OFF");
                 telemetry.addData(
@@ -450,6 +473,8 @@ public class BioBuzzTeleOp extends LinearOpMode {
         rightRear.setPower(0.0);
 
         intake.setPower(0.0);
+        leftIntakeServo.setPower(0.0);
+        rightIntakeServo.setPower(0.0);
         transfer.setPower(0.0);
         outtake.setVelocity(0.0);
     }
