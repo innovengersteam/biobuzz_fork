@@ -1,4 +1,3 @@
-
 package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -7,6 +6,7 @@ import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
 import com.qualcomm.robotcore.util.Range;
 
@@ -43,6 +43,16 @@ public class BioBuzzTeleOp extends LinearOpMode {
     // Servo Port 0 = rightIntakeServo
     private CRServo rightIntakeServo;
 
+    // CONTROL HUB LED
+    // Servo Port 3 = intakeLED (white PWM headlight)
+    private Servo intakeLED;
+
+    // EXPANSION HUB LEDS
+    // Servo Port 2 = outtakeLED (white PWM headlight)
+    // Servo Port 4 = transferLED (white PWM headlight)
+    private Servo outtakeLED;
+    private Servo transferLED;
+
     // ==========================================
     // SETTINGS
     // ==========================================
@@ -51,6 +61,10 @@ public class BioBuzzTeleOp extends LinearOpMode {
     private static final double INTAKE_POWER = 1.0;
     private static final double TRANSFER_POWER = 1.0;
     private static final double INTAKE_SERVO_POWER = 1.0;
+
+    // PWM headlight brightness positions (verify ON/OFF on hardware).
+    private static final double LED_ON = 1.0;
+    private static final double LED_OFF = 0.0;
 
     private static final double START_RPM = 2500.0;
     private static final double RPM_STEP = 50.0;
@@ -100,6 +114,11 @@ public class BioBuzzTeleOp extends LinearOpMode {
         transfer = hardwareMap.get(CRServo.class, "transfer");
         leftIntakeServo = hardwareMap.get(CRServo.class, "leftIntakeServo");
         rightIntakeServo = hardwareMap.get(CRServo.class, "rightIntakeServo");
+
+        // PWM-controlled white LED headlights.
+        intakeLED = hardwareMap.get(Servo.class, "intakeLED");
+        outtakeLED = hardwareMap.get(Servo.class, "outtakeLED");
+        transferLED = hardwareMap.get(Servo.class, "transferLED");
 
         // ------------------------------------------
         // OUTTAKE MOTOR CONFIGURATION OVERRIDE
@@ -332,6 +351,17 @@ public class BioBuzzTeleOp extends LinearOpMode {
                 outtake.setVelocity(requestedTicksPerSecond);
 
                 // ==================================
+                // LED HEADLIGHTS
+                // ==================================
+
+                // LEDs follow the commanded mechanism states.
+                // Outtake LED stays OFF when target RPM is zero.
+                intakeLED.setPosition(intakeOn ? LED_ON : LED_OFF);
+                transferLED.setPosition(transferOn ? LED_ON : LED_OFF);
+                outtakeLED.setPosition(
+                        commandedRPM > 0.0 ? LED_ON : LED_OFF);
+
+                // ==================================
                 // READ OUTTAKE FEEDBACK
                 // ==================================
 
@@ -366,6 +396,12 @@ public class BioBuzzTeleOp extends LinearOpMode {
                         "Transfer", transferOn ? "ON" : "OFF");
                 telemetry.addData(
                         "Outtake", outtakeOn ? "ON" : "OFF");
+
+                telemetry.addLine("--- LED HEADLIGHTS ---");
+                telemetry.addData("Intake LED", intakeOn ? "ON" : "OFF");
+                telemetry.addData("Transfer LED", transferOn ? "ON" : "OFF");
+                telemetry.addData("Outtake LED",
+                        commandedRPM > 0.0 ? "ON" : "OFF");
 
                 telemetry.addLine("--- OUTTAKE ---");
 
@@ -477,5 +513,10 @@ public class BioBuzzTeleOp extends LinearOpMode {
         rightIntakeServo.setPower(0.0);
         transfer.setPower(0.0);
         outtake.setVelocity(0.0);
+
+        // Turn off all three LED headlights at init and stop.
+        intakeLED.setPosition(LED_OFF);
+        transferLED.setPosition(LED_OFF);
+        outtakeLED.setPosition(LED_OFF);
     }
 }
