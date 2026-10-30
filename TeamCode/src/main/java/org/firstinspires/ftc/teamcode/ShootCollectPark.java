@@ -25,7 +25,7 @@ public class ShootCollectPark extends LinearOpMode {
     // 3. Start intake motor and both intake servos while strafing LEFT 48 inches.
     // 4. Move backward 4 inches, then remain stationary for 3 seconds; intake ON.
     // 5. Stop all intake components, then move forward 4 inches.
-    // 6. Strafe RIGHT 4 inches, then move forward 70 inches and stop.
+    // 6. Strafe RIGHT 7 inches, then move forward 78 inches and stop.
     // 7. If a movement makes no meaningful progress for 1 second, stop
     //    the wheels and continue from the actual position to the next step.
     // The one-second detection interval is the only obstacle delay; no extra wait.
@@ -59,7 +59,7 @@ public class ShootCollectPark extends LinearOpMode {
     private static final double STRAFE_LEFT_INCHES = 50.0;
     private static final double BACKWARD_INCHES = 4.0;
     private static final double HOLD_SECONDS = 3.0;
-    private static final double STRAFE_RIGHT_INCHES = 6.0;
+    private static final double STRAFE_RIGHT_INCHES = 7.0;
     private static final double FINAL_FORWARD_INCHES = 78.0;
     // Only the last forward move uses this higher power limit.
     // Start at 0.45 and verify stopping distance on the actual robot.
