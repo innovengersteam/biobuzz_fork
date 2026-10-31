@@ -62,13 +62,17 @@ public class BioBuzzTeleOp extends LinearOpMode {
     private static final double TRANSFER_POWER = 1.0;
     private static final double INTAKE_SERVO_POWER = 1.0;
 
-    // PWM headlight brightness positions (verify ON/OFF on hardware).
+    // PWM headlight brightness commands.
     private static final double LED_ON = 1.0;
     private static final double LED_OFF = 0.0;
 
-    private static final double START_RPM = 2650.0;
+    private static final double START_RPM = 2500.0;
     private static final double RPM_STEP = 50.0;
     private static final double MAX_RPM = 6000.0;
+
+    // Transfer may run only when measured flywheel speed
+    // is within this many RPM of the target.
+    private static final double FLYWHEEL_READY_TOLERANCE_RPM = 50.0;
 
     // Converted goBILDA 1:1 outtake motor
     private static final double OUTTAKE_TICKS_PER_REV = 28.0;
@@ -87,7 +91,11 @@ public class BioBuzzTeleOp extends LinearOpMode {
     // ==========================================
 
     private boolean intakeOn = false;
+
+    // This records the driver's transfer request.
+    // Actual transfer movement also requires flywheelReady.
     private boolean transferOn = false;
+
     private boolean outtakeOn = false;
 
     // Previous inputs for one action per press
@@ -111,9 +119,12 @@ public class BioBuzzTeleOp extends LinearOpMode {
 
         intake = hardwareMap.get(DcMotor.class, "intake");
         outtake = hardwareMap.get(DcMotorEx.class, "outtake");
+
         transfer = hardwareMap.get(CRServo.class, "transfer");
-        leftIntakeServo = hardwareMap.get(CRServo.class, "leftIntakeServo");
-        rightIntakeServo = hardwareMap.get(CRServo.class, "rightIntakeServo");
+        leftIntakeServo = hardwareMap.get(
+                CRServo.class, "leftIntakeServo");
+        rightIntakeServo = hardwareMap.get(
+                CRServo.class, "rightIntakeServo");
 
         // PWM-controlled white LED headlights.
         intakeLED = hardwareMap.get(Servo.class, "intakeLED");
@@ -148,9 +159,18 @@ public class BioBuzzTeleOp extends LinearOpMode {
 
         intake.setDirection(DcMotorSimple.Direction.FORWARD);
         transfer.setDirection(DcMotorSimple.Direction.REVERSE);
-        leftIntakeServo.setDirection(DcMotorSimple.Direction.REVERSE);
-        rightIntakeServo.setDirection(DcMotorSimple.Direction.FORWARD);
+
+        leftIntakeServo.setDirection(
+                DcMotorSimple.Direction.REVERSE);
+        rightIntakeServo.setDirection(
+                DcMotorSimple.Direction.FORWARD);
+
         outtake.setDirection(OUTTAKE_DIRECTION);
+
+        // Use normal brightness direction for all LEDs.
+        intakeLED.setDirection(Servo.Direction.FORWARD);
+        outtakeLED.setDirection(Servo.Direction.FORWARD);
+        transferLED.setDirection(Servo.Direction.FORWARD);
 
         // ------------------------------------------
         // ZERO-POWER BEHAVIOR
@@ -186,6 +206,7 @@ public class BioBuzzTeleOp extends LinearOpMode {
         outtake.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
         // Keep existing PIDF coefficients unchanged.
+        // Stop all mechanisms and turn OFF all LEDs.
         stopEverything();
 
         // ------------------------------------------
@@ -196,12 +217,21 @@ public class BioBuzzTeleOp extends LinearOpMode {
         telemetry.addLine("Left stick = Drive / Strafe");
         telemetry.addLine("Right stick X = Turn");
         telemetry.addLine("LT = Toggle intake");
-        telemetry.addLine("LB = Toggle transfer");
+        telemetry.addLine("LB = Request / cancel transfer");
         telemetry.addLine("RT = Toggle outtake");
         telemetry.addLine("D-pad Up/Down = +/- 50 RPM");
+        telemetry.addLine("Transfer waits for flywheel target speed.");
+        telemetry.addLine("Outtake OFF clears transfer request.");
+        telemetry.addLine("LEDs follow mechanism commands.");
 
         telemetry.addData(
                 "Starting target RPM", "%.0f", targetRPM);
+
+        telemetry.addData(
+                "Flywheel ready tolerance",
+                "+/- %.0f RPM",
+                FLYWHEEL_READY_TOLERANCE_RPM
+        );
 
         telemetry.addData(
                 "Outtake ticks/rev",
@@ -294,13 +324,12 @@ public class BioBuzzTeleOp extends LinearOpMode {
                     intakeOn = !intakeOn;
                 }
 
-                if (leftBumper && !lastLeftBumper) {
-                    transferOn = !transferOn;
-                }
-
                 if (rightTrigger && !lastRightTrigger) {
                     outtakeOn = !outtakeOn;
                 }
+
+                // Transfer toggle is handled below, after
+                // checking the outtake state and target RPM.
 
                 // ==================================
                 // ADJUST TARGET RPM
@@ -317,7 +346,32 @@ public class BioBuzzTeleOp extends LinearOpMode {
                 targetRPM = Range.clip(
                         targetRPM, 0.0, MAX_RPM);
 
+                // ==================================
+                // TRANSFER REQUEST
+                // ==================================
+
+                if (!outtakeOn || targetRPM <= 0.0) {
+
+                    // Ignore transfer presses when outtake
+                    // is OFF or its target speed is zero.
+                    //
+                    // Clear any previous request so transfer
+                    // cannot restart automatically when
+                    // outtake is turned back ON.
+                    transferOn = false;
+
+                } else if (leftBumper && !lastLeftBumper) {
+
+                    // Request or cancel transfer.
+                    //
+                    // If flywheel is still accelerating,
+                    // remember the request but keep transfer
+                    // stopped until target speed is reached.
+                    transferOn = !transferOn;
+                }
+
                 // Remember inputs for the next loop.
+                // This must happen after checking all toggles.
                 lastLeftTrigger = leftTrigger;
                 lastLeftBumper = leftBumper;
                 lastRightTrigger = rightTrigger;
@@ -337,9 +391,6 @@ public class BioBuzzTeleOp extends LinearOpMode {
                 rightIntakeServo.setPower(
                         intakeOn ? INTAKE_SERVO_POWER : 0.0);
 
-                transfer.setPower(
-                        transferOn ? TRANSFER_POWER : 0.0);
-
                 double commandedRPM =
                         outtakeOn ? targetRPM : 0.0;
 
@@ -350,16 +401,8 @@ public class BioBuzzTeleOp extends LinearOpMode {
 
                 outtake.setVelocity(requestedTicksPerSecond);
 
-                // ==================================
-                // LED HEADLIGHTS
-                // ==================================
-
-                // LEDs follow the commanded mechanism states.
-                // Outtake LED stays OFF when target RPM is zero.
-                intakeLED.setPosition(intakeOn ? LED_ON : LED_OFF);
-                transferLED.setPosition(transferOn ? LED_ON : LED_OFF);
-                outtakeLED.setPosition(
-                        commandedRPM > 0.0 ? LED_ON : LED_OFF);
+                // Transfer power is commanded below, only
+                // after checking measured flywheel speed.
 
                 // ==================================
                 // READ OUTTAKE FEEDBACK
@@ -381,6 +424,64 @@ public class BioBuzzTeleOp extends LinearOpMode {
                         commandedRPM - signedActualRPM;
 
                 // ==================================
+                // TRANSFER SPEED INTERLOCK
+                // ==================================
+
+                // Require the flywheel to be commanded ON
+                // with a positive target.
+                //
+                // Use signed RPM so reverse rotation cannot
+                // incorrectly satisfy the speed check.
+                //
+                // Example: for a 2500 RPM target and 50 RPM
+                // tolerance, flywheel is ready at 2450–2550 RPM.
+                boolean flywheelReady =
+                        outtakeOn
+                                && targetRPM > 0.0
+                                && Math.abs(signedRPMError)
+                                <= FLYWHEEL_READY_TOLERANCE_RPM;
+
+                // Transfer requires BOTH:
+                // 1. A transfer request from the driver.
+                // 2. Flywheel speed within target tolerance.
+                //
+                // If flywheel speed drops outside tolerance,
+                // pause transfer. Resume when speed recovers
+                // while the driver's request remains active.
+                boolean transferRunning =
+                        transferOn && flywheelReady;
+
+                transfer.setPower(
+                        transferRunning ? TRANSFER_POWER : 0.0);
+
+                // ==================================
+                // LED HEADLIGHTS
+                // ==================================
+
+                // Intake LED follows the intake motor command.
+                intakeLED.setPosition(
+                        intakeOn ? LED_ON : LED_OFF);
+
+                // Outtake LED is ON while the outtake is
+                // commanded to run at a positive RPM.
+                //
+                // Turning outtake OFF turns its LED OFF,
+                // even while the flywheel coasts to a stop.
+                boolean outtakeRunning =
+                        commandedRPM > 0.0;
+
+                outtakeLED.setPosition(
+                        outtakeRunning ? LED_ON : LED_OFF);
+
+                // Transfer LED follows the transfer motor
+                // command, not the driver's pending request.
+                //
+                // Keep it OFF while waiting for flywheel speed.
+                // Turn it OFF whenever transfer is paused.
+                transferLED.setPosition(
+                        transferRunning ? LED_ON : LED_OFF);
+
+                // ==================================
                 // TELEMETRY
                 // ==================================
 
@@ -388,22 +489,61 @@ public class BioBuzzTeleOp extends LinearOpMode {
 
                 telemetry.addData(
                         "Intake", intakeOn ? "ON" : "OFF");
+
                 telemetry.addData(
                         "Left Intake Servo", intakeOn ? "ON" : "OFF");
+
                 telemetry.addData(
                         "Right Intake Servo", intakeOn ? "ON" : "OFF");
+
                 telemetry.addData(
-                        "Transfer", transferOn ? "ON" : "OFF");
+                        "Transfer",
+                        transferRunning
+                                ? "RUNNING"
+                                : transferOn
+                                  ? "WAITING FOR SPEED"
+                                  : "OFF"
+                );
+
                 telemetry.addData(
-                        "Outtake", outtakeOn ? "ON" : "OFF");
+                        "Transfer requested",
+                        transferOn ? "YES" : "NO"
+                );
+
+                telemetry.addData(
+                        "Outtake",
+                        outtakeRunning ? "ON" : "OFF"
+                );
 
                 telemetry.addLine("--- LED HEADLIGHTS ---");
-                telemetry.addData("Intake LED", intakeOn ? "ON" : "OFF");
-                telemetry.addData("Transfer LED", transferOn ? "ON" : "OFF");
-                telemetry.addData("Outtake LED",
-                        commandedRPM > 0.0 ? "ON" : "OFF");
+
+                telemetry.addData(
+                        "Intake LED command",
+                        intakeOn ? "ON" : "OFF"
+                );
+
+                telemetry.addData(
+                        "Transfer LED command",
+                        transferRunning ? "ON" : "OFF"
+                );
+
+                telemetry.addData(
+                        "Outtake LED command",
+                        outtakeRunning ? "ON" : "OFF"
+                );
 
                 telemetry.addLine("--- OUTTAKE ---");
+
+                telemetry.addData(
+                        "Flywheel ready",
+                        flywheelReady ? "YES" : "NO"
+                );
+
+                telemetry.addData(
+                        "Ready tolerance",
+                        "+/- %.0f RPM",
+                        FLYWHEEL_READY_TOLERANCE_RPM
+                );
 
                 telemetry.addData(
                         "Target RPM",
@@ -514,9 +654,14 @@ public class BioBuzzTeleOp extends LinearOpMode {
         transfer.setPower(0.0);
         outtake.setVelocity(0.0);
 
-        // Turn off all three LED headlights at init and stop.
+        // Turn OFF all three LED headlights at init and stop.
         intakeLED.setPosition(LED_OFF);
-        transferLED.setPosition(LED_OFF);
         outtakeLED.setPosition(LED_OFF);
+        transferLED.setPosition(LED_OFF);
+
+        // Clear toggle states when stopping.
+        intakeOn = false;
+        transferOn = false;
+        outtakeOn = false;
     }
 }
