@@ -66,7 +66,7 @@ public class BioBuzzTeleOp extends LinearOpMode {
     private static final double LED_ON = 1.0;
     private static final double LED_OFF = 0.0;
 
-    private static final double START_RPM = 2500.0;
+    private static final double START_RPM = 2650.0;
     private static final double RPM_STEP = 50.0;
     private static final double MAX_RPM = 6000.0;
 
